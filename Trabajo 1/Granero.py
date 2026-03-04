@@ -27,7 +27,7 @@ class Almacen:
 
 
 class Granero:
-    def __init__(self, ancho=1000, alto=600):
+    def __init__(self, ancho=1100, alto=650):
         pygame.init()
         self.pantalla = pygame.display.set_mode((ancho, alto))
         pygame.display.set_caption("Simulador de Granero")
@@ -38,7 +38,6 @@ class Granero:
         self.fuente_lg = pygame.font.Font(None, 40)
 
         self.COLOR_FONDO = (30, 60, 30)
-
         self.colores_grano = {
             TipoGrano.TRIGO: (255, 215, 0),
             TipoGrano.MAIZ: (255, 140, 0),
@@ -46,124 +45,81 @@ class Granero:
         }
 
         self.almacenes = [
-            Almacen(50, None, x=200, y=250),
-            Almacen(50, None, x=500, y=250),
-            Almacen(50, None, x=800, y=250)
+            Almacen(50, TipoGrano.TRIGO, x=150, y=250),
+            Almacen(50, TipoGrano.MAIZ, x=400, y=250),
+            Almacen(50, TipoGrano.CEBADA, x=650, y=250)
         ]
 
-        self.mensaje = ""
-        self.color_mensaje = (255, 255, 255)
+        # Mensaje inicial súper simple
+        self.mensaje = "Esperando..."
+        self.color_mensaje = (200, 200, 200)
         self.corriendo = True
 
         self.generar_camion()
 
     def generar_camion(self):
-        tipos_disponibles = []
-
-        for tipo in TipoGrano:
-            silos_tipo = [a for a in self.almacenes if a.tipo_grano_asignado == tipo]
-            if not silos_tipo or not all(a.esta_lleno() for a in silos_tipo):
-                tipos_disponibles.append(tipo)
-
-        if not tipos_disponibles:
-            self.camion_tipo = None
-            return
-
-        self.camion_tipo = random.choice(tipos_disponibles)
         self.camion_cantidad = random.choice([10, 20])
 
-    def tipo_ya_asignado(self, tipo):
-        for alm in self.almacenes:
-            if alm.tipo_grano_asignado == tipo:
-                return alm
-        return None
+    def descargar_grano(self, tipo):
+        silo = next((s for s in self.almacenes if s.tipo_grano_asignado == tipo), None)
 
-    def silo_vacio(self):
-        for alm in self.almacenes:
-            if alm.tipo_grano_asignado is None:
-                return alm
-        return None
-
-    def descargar_en_contenedor(self, indice):
-
-        almacen = self.almacenes[indice]
-        tipo = self.camion_tipo
         cantidad = self.camion_cantidad
+        espacio = silo.espacio_disponible()
 
-        silo_existente = self.tipo_ya_asignado(tipo)
-
-        # Si el tipo ya está en otro silo diferente
-        if silo_existente and silo_existente != almacen:
-            self.mensaje = "Ese grano ya está en otro silo"
-            self.color_mensaje = (255, 100, 100)
-            return
-
-        # Si el silo está vacío, lo asignamos
-        if almacen.tipo_grano_asignado is None:
-            almacen.tipo_grano_asignado = tipo
-
-        espacio = almacen.espacio_disponible()
-
-        # Caso normal: cabe completo
         if cantidad <= espacio:
-            almacen.cantidad += cantidad
-            self.mensaje = "Descarga exitosa"
+            silo.cantidad += cantidad
+
+            # Mensaje simplificado
+            self.mensaje = f"Descarga: {cantidad}T"
             self.color_mensaje = (100, 255, 100)
-            self.generar_camion()
-            return
 
-        # 🔥 Caso especial: no cabe completo
-        sobrante = cantidad - espacio
+            if all(s.esta_lleno() for s in self.almacenes[:3]):
+                self.mensaje = "Sin capacidad libre - FIN"
+                self.color_mensaje = (255, 255, 0)
+                self.dibujar_todo()
+                pygame.time.delay(3500)
+                self.corriendo = False
+            else:
+                self.generar_camion()
 
-        if espacio > 0:
-            almacen.cantidad += espacio  # llenar el primero
-
-        segundo_silo = self.silo_vacio()
-
-        if segundo_silo:
-            segundo_silo.tipo_grano_asignado = tipo
-            segundo_silo.cantidad = sobrante
-
-            self.mensaje = "Se abrió segundo silo - FIN"
-            self.color_mensaje = (255, 255, 0)
-
-            pygame.display.flip()
-            pygame.time.delay(2500)
-            self.corriendo = False
         else:
-            self.mensaje = "No hay espacio adicional - FIN"
-            self.color_mensaje = (255, 0, 0)
-            pygame.display.flip()
-            pygame.time.delay(2500)
+            sobrante = cantidad - espacio
+            silo.cantidad += espacio
+
+            nuevo_silo = Almacen(capacidad_max=50, tipo_grano_asignado=tipo, cantidad=sobrante, x=900, y=250)
+            self.almacenes.append(nuevo_silo)
+
+            # Mensaje simplificado para cuando se excede
+            self.mensaje = "Límite excedido - FIN"
+            self.color_mensaje = (255, 100, 100)
+
+            self.dibujar_todo()
+            pygame.time.delay(4500)
             self.corriendo = False
 
     def dibujar_camion(self):
-        pygame.draw.rect(self.pantalla, (100, 100, 100), (350, 50, 300, 80), border_radius=10)
+        # Caja del camión
+        pygame.draw.rect(self.pantalla, (80, 80, 80), (400, 30, 300, 80), border_radius=10)
 
-        texto1 = self.fuente_md.render("CAMIÓN", True, (255, 255, 255))
-        self.pantalla.blit(texto1, (450, 55))
+        texto1 = self.fuente_md.render("CAMIÓN EN ESPERA", True, (255, 255, 255))
+        rect1 = texto1.get_rect(center=(550, 50))
+        self.pantalla.blit(texto1, rect1)
 
-        if self.camion_tipo:
-            texto2 = self.fuente_sm.render(
-                f"Grano: {self.camion_tipo.name}",
-                True,
-                self.colores_grano[self.camion_tipo]
-            )
-            texto3 = self.fuente_sm.render(
-                f"Cantidad: {self.camion_cantidad} T",
-                True,
-                (255, 255, 255)
-            )
-            self.pantalla.blit(texto2, (400, 80))
-            self.pantalla.blit(texto3, (400, 105))
+        texto2 = self.fuente_md.render(f"Carga: {self.camion_cantidad} T", True, (200, 255, 200))
+        rect2 = texto2.get_rect(center=(550, 85))
+        self.pantalla.blit(texto2, rect2)
+
+        # AQUÍ ESTÁ EL MENSAJE (Lo movimos justo debajo del camión, centrado)
+        txt_info = self.fuente_md.render(self.mensaje, True, self.color_mensaje)
+        rect_info = txt_info.get_rect(center=(550, 135))
+        self.pantalla.blit(txt_info, rect_info)
 
     def dibujar_almacenes(self):
         for i, alm in enumerate(self.almacenes):
-
             ancho_silo, alto_silo = 140, 180
             rect_silo = pygame.Rect(alm.x - 70, alm.y, ancho_silo, alto_silo)
 
-            pygame.draw.rect(self.pantalla, (20, 20, 20), rect_silo)
+            pygame.draw.rect(self.pantalla, (40, 40, 40), rect_silo)
 
             if alm.cantidad > 0:
                 altura_pixeles = int((alm.cantidad / alm.capacidad_max) * alto_silo)
@@ -177,23 +133,42 @@ class Granero:
                 )
                 pygame.draw.rect(self.pantalla, color, rect_grano)
 
-            esta_lleno = alm.esta_lleno()
-            color_borde = (255, 0, 0) if esta_lleno else (200, 200, 200)
+            color_borde = (255, 100, 100) if alm.esta_lleno() else (200, 200, 200)
             pygame.draw.rect(self.pantalla, color_borde, rect_silo, 3)
 
-            txt_nombre = self.fuente_md.render(f"Contenedor {i+1}", True, (255, 255, 255))
-            self.pantalla.blit(txt_nombre, (alm.x - 60, alm.y - 40))
+            nombre = alm.tipo_grano_asignado.name
+            if i == 3:
+                nombre = f"{nombre} (EXTRA)"
 
-            txt_contador = self.fuente_lg.render(
-                f"{alm.cantidad} / {alm.capacidad_max} T",
-                True,
-                (255, 255, 255)
-            )
-            self.pantalla.blit(txt_contador, (alm.x - 65, alm.y + alto_silo + 20))
+            txt_nombre = self.fuente_md.render(nombre, True, (255, 255, 255))
+            rect_nombre = txt_nombre.get_rect(center=(alm.x, alm.y - 20))
+            self.pantalla.blit(txt_nombre, rect_nombre)
+
+            txt_contador = self.fuente_lg.render(f"{alm.cantidad} / {alm.capacidad_max} T", True, (255, 255, 255))
+            rect_contador = txt_contador.get_rect(center=(alm.x, alm.y + alto_silo + 25))
+            self.pantalla.blit(txt_contador, rect_contador)
 
     def dibujar_info(self):
-        txt_info = self.fuente_md.render(self.mensaje, True, self.color_mensaje)
-        self.pantalla.blit(txt_info, (20, 550))
+        # ELIMINAMOS EL TEXTO AZUL INNECESARIO
+        # Ahora solo dibujamos los botones de control centrados en la parte inferior
+
+        controles = [
+            ("TECLA [ 1 ] = TRIGO", self.colores_grano[TipoGrano.TRIGO], 220),
+            ("TECLA [ 2 ] = MAÍZ", self.colores_grano[TipoGrano.MAIZ], 550),
+            ("TECLA [ 3 ] = CEBADA", self.colores_grano[TipoGrano.CEBADA], 880)
+        ]
+
+        for texto, color, pos_x in controles:
+            txt_ctrl = self.fuente_lg.render(texto, True, color)
+            rect_ctrl = txt_ctrl.get_rect(center=(pos_x, 580))
+            self.pantalla.blit(txt_ctrl, rect_ctrl)
+
+    def dibujar_todo(self):
+        self.pantalla.fill(self.COLOR_FONDO)
+        self.dibujar_camion()
+        self.dibujar_almacenes()
+        self.dibujar_info()
+        pygame.display.flip()
 
     def ejecutar(self):
         while self.corriendo:
@@ -203,20 +178,15 @@ class Granero:
 
                 elif evento.type == pygame.KEYDOWN:
                     if evento.key == pygame.K_1:
-                        self.descargar_en_contenedor(0)
+                        self.descargar_grano(TipoGrano.TRIGO)
                     elif evento.key == pygame.K_2:
-                        self.descargar_en_contenedor(1)
+                        self.descargar_grano(TipoGrano.MAIZ)
                     elif evento.key == pygame.K_3:
-                        self.descargar_en_contenedor(2)
+                        self.descargar_grano(TipoGrano.CEBADA)
 
-            self.pantalla.fill(self.COLOR_FONDO)
-
-            self.dibujar_camion()
-            self.dibujar_almacenes()
-            self.dibujar_info()
-
-            pygame.display.flip()
-            self.reloj.tick(60)
+            if self.corriendo:
+                self.dibujar_todo()
+                self.reloj.tick(60)
 
         pygame.quit()
         sys.exit()
